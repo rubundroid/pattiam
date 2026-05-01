@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Pattiam Ayurvedics — Online Order Form with GST pricing">
+  <title>Pattiam Order Form</title>
+
+  <!-- ══ CDN LIBRARIES ══════════════════════════════════ -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- ══ GOOGLE FONTS ═══════════════════════════════════ -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- ══ TAILWIND CONFIG ════════════════════════════════ -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Outfit', 'system-ui', 'sans-serif'] },
+          colors: {
+            g: {
+              50:  '#f0fdf4', 100: '#dcfce7', 200: '#bbf7d0',
+              600: '#16a34a', 700: '#15803d', 800: '#166534',
+              900: '#14532d', 950: '#052e16'
+            },
+            amber: { 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- ══ CUSTOM STYLES ══════════════════════════════════ -->
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: 'Outfit', system-ui, sans-serif; }
+
+    /* ── Number input: hide browser arrows */
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
+
+    /* ── Category section header gradient */
+    .cat-row { background: linear-gradient(90deg, #052e16 0%, #14532d 60%, #166534 100%); }
+
+    /* ── Row hover */
+    .item-row { transition: background 0.12s ease; }
+    .item-row:hover td { background-color: #f0fdf4 !important; }
+
+    /* ── Custom scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 99px; }
+
+    /* ── Cart bar slide-up */
+    #cartBar {
+      transform: translateY(100%);
+      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    #cartBar.show { transform: translateY(0); }
+
+    /* ── Loading spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 0.85s linear infinite; }
+
+    /* ── Qty button micro-interaction */
+    .qty-btn { transition: background 0.15s, transform 0.1s; }
+    .qty-btn:active { transform: scale(0.88); }
+
+    /* ── Highlight row when qty changes */
+    @keyframes row-flash { 0%,100% { background-color: transparent; } 40% { background-color: #dcfce7; } }
+    .row-flash td { animation: row-flash 0.45s ease; }
+  </style>
+</head>
+
+<body class="bg-slate-100 min-h-screen">
+
+<!-- ══════════════════════════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════════════════════════ -->
+<header class="bg-g-900 text-white shadow-xl">
+  <div class="max-w-screen-xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-4">
+
+    <!-- Brand -->
+    <div class="flex-1 min-w-0 flex items-center gap-3">
+      <span class="text-3xl leading-none select-none" aria-hidden>🌿</span>
+      <div>
+        <h1 class="text-xl sm:text-2xl font-bold tracking-tight leading-tight">Pattiam Ayurvedics</h1>
+        <p class="text-g-200 text-xs sm:text-sm font-light tracking-wide mt-0.5">
+          Order Form &nbsp;·&nbsp; Prices include 5% GST
+        </p>
+      </div>
+    </div>
+
+    <!-- Header actions -->
+    <div class="flex items-center gap-2 shrink-0">
+      <button id="resetBtn"
+        class="hidden items-center gap-1.5 text-xs sm:text-sm font-medium
+               bg-white/10 hover:bg-white/20 border border-white/20
+               text-white px-3 py-2 rounded-lg transition"
+        onclick="resetAll()">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        <span class="hidden sm:inline">Reset All</span>
+      </button>
+
+      <button onclick="downloadPDF()"
+        class="flex items-center gap-2 text-sm font-semibold
+               bg-amber-500 hover:bg-amber-400 active:scale-95
+               text-white px-4 py-2 rounded-lg shadow-lg shadow-black/20 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <span class="hidden sm:inline">Download PDF</span>
+        <span class="sm:hidden">PDF</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════════
+     CUSTOMER / ORDER INFO BAR
+══════════════════════════════════════════════════════════════ -->
+<div class="bg-white border-b border-slate-200 shadow-sm">
+  <div class="max-w-screen-xl mx-auto px-4 sm:px-6 py-3">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+
+      <div class="col-span-2 sm:col-span-1">
+        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+          Customer Name
+        </label>
+        <input id="custName" type="text" placeholder="Full name…"
+          class="w-full text-sm border border-slate-200 bg-slate-50 rounded-lg
+                 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-g-700
+                 placeholder-slate-300 transition">
+      </div>
+
+      <div>
+        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+          Address / District
+        </label>
+        <input id="custAddress" type="text" placeholder="City / District"
+          class="w-full text-sm border border-slate-200 bg-slate-50 rounded-lg
+                 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-g-700
+                 placeholder-slate-300 transition">
+      </div>
+
+      <div>
+        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+          Phone
+        </label>
+        <input id="custPhone" type="tel" placeholder="+91 …"
+          class="w-full text-sm border border-slate-200 bg-slate-50 rounded-lg
+                 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-g-700
+                 placeholder-slate-300 transition">
+      </div>
+
+      <div>
+        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+          Order Date
+        </label>
+        <input id="orderDate" type="date"
+          class="w-full text-sm border border-slate-200 bg-slate-50 rounded-lg
+                 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-g-700 transition">
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     STICKY FILTER / SEARCH BAR
+══════════════════════════════════════════════════════════════ -->
+<div class="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-slate-200 shadow-md">
+  <div class="max-w-screen-xl mx-auto px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-2">
+
+    <!-- Search -->
+    <div class="relative flex-1 min-w-[170px]">
+      <svg xmlns="http://www.w3.org/2000/svg"
+           class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none"
+           fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+      <input id="searchInput" type="text" placeholder="Search medicine…"
+        oninput="applyFilters()"
+        class="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-200 bg-slate-50 rounded-lg
+               focus:outline-none focus:ring-2 focus:ring-g-700 placeholder-slate-400 transition">
+    </div>
+
+    <!-- Category filter -->
+    <select id="catFilter" onchange="applyFilters()"
+      class="text-sm border border-slate-200 bg-slate-50 rounded-lg
+             px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-g-700
+             min-w-[140px] max-w-[200px] transition">
+      <option value="">All Categories</option>
+    </select>
+
+    <!-- Ordered-only toggle -->
+    <label class="flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer select-none whitespace-nowrap">
+      <input type="checkbox" id="orderedOnly" onchange="applyFilters()"
+        class="w-4 h-4 rounded accent-green-800">
+      Ordered only
+    </label>
+
+    <!-- Item count badge -->
+    <span id="countBadge"
+      class="ml-auto text-xs font-semibold bg-g-100 text-g-800 px-2.5 py-1 rounded-full whitespace-nowrap">
+    </span>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MAIN CONTENT AREA
+══════════════════════════════════════════════════════════════ -->
+<main class="max-w-screen-xl mx-auto px-4 sm:px-6 py-5 pb-36">
+
+  <!-- ── LOADING ── -->
+  <div id="stateLoading" class="flex flex-col items-center justify-center py-28 text-center">
+    <div class="w-12 h-12 rounded-full border-4 border-g-200 border-t-g-700 spin mb-5"></div>
+    <p class="text-slate-600 font-medium">Loading price list…</p>
+    <p class="text-slate-400 text-sm mt-1">
+      Fetching <code class="bg-slate-100 rounded px-1 font-mono">price_list.xlsx</code>
+    </p>
+  </div>
+
+  <!-- ── FILE NOT FOUND / PICKER ── -->
+  <div id="stateError" class="hidden flex-col items-center justify-center py-20 text-center gap-3">
+    <div class="w-20 h-20 rounded-full bg-amber-50 flex items-center justify-center text-4xl mb-2">📋</div>
+    <h2 class="text-lg font-semibold text-slate-700">Price List Not Found</h2>
+    <p class="text-slate-500 text-sm max-w-sm">
+      Could not auto-load
+      <code class="bg-slate-100 rounded px-1 font-mono text-xs">price_list.xlsx</code>
+      from the same directory.
+    </p>
+    <p class="text-slate-400 text-xs max-w-sm">
+      For GitHub Pages: place <code class="bg-slate-100 rounded px-1 font-mono">price_list.xlsx</code>
+      in the same repository folder as <code class="bg-slate-100 rounded px-1 font-mono">index.html</code>.
+    </p>
+    <label class="mt-3 cursor-pointer inline-flex items-center gap-2
+                  bg-g-800 hover:bg-g-700 text-white font-semibold
+                  px-6 py-3 rounded-xl shadow-lg shadow-green-900/20 transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
+           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+      </svg>
+      Select price_list.xlsx
+      <input type="file" accept=".xlsx,.xls" onchange="loadFromFile(event)" class="hidden">
+    </label>
+  </div>
+
+  <!-- ── TABLE ── -->
+  <div id="stateTable" class="hidden">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="cat-row text-white text-xs uppercase tracking-wider">
+              <th class="px-3 py-3 text-left font-semibold w-10 shrink-0">#</th>
+              <th class="px-3 py-3 text-left font-semibold">Medicine Name</th>
+              <th class="px-3 py-3 text-center font-semibold w-20">Unit</th>
+              <th class="px-3 py-3 text-right font-semibold w-24">Base Price</th>
+              <th class="px-3 py-3 text-right font-semibold w-28">
+                <div class="flex flex-col items-end leading-tight">
+                  <span>Incl. GST</span>
+                  <span class="text-g-200 font-normal normal-case text-[10px] tracking-normal">
+                    Base + 5%
+                  </span>
+                </div>
+              </th>
+              <th class="px-3 py-3 text-center font-semibold w-36">Quantity</th>
+              <th class="px-3 py-3 text-right font-semibold w-28">Line Total</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- No search results -->
+    <div id="noResults" class="hidden text-center py-16 text-slate-400">
+      <div class="text-5xl mb-3">🔍</div>
+      <p class="font-semibold text-slate-500">No medicines found</p>
+      <p class="text-sm mt-1">Try a different search term or clear the filter</p>
+    </div>
+  </div>
+
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════
+     STICKY CART BAR (bottom)
+══════════════════════════════════════════════════════════════ -->
+<div id="cartBar" class="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
+  <div class="pointer-events-auto bg-g-950 text-white border-t-2 border-g-800 shadow-2xl">
+    <div class="max-w-screen-xl mx-auto px-4 sm:px-6 py-3
+                flex flex-wrap items-center justify-between gap-3">
+
+      <!-- Stats -->
+      <div class="flex gap-4 sm:gap-8">
+        <div>
+          <div class="text-[9px] sm:text-[10px] text-g-400 uppercase tracking-widest font-bold">
+            Line Items
+          </div>
+          <div id="stat-items" class="text-xl sm:text-2xl font-bold tabular-nums">0</div>
+        </div>
+        <div>
+          <div class="text-[9px] sm:text-[10px] text-g-400 uppercase tracking-widest font-bold">
+            Total Qty
+          </div>
+          <div id="stat-qty" class="text-xl sm:text-2xl font-bold tabular-nums">0</div>
+        </div>
+        <div>
+          <div class="text-[9px] sm:text-[10px] text-g-400 uppercase tracking-widest font-bold">
+            Order Value (GST incl.)
+          </div>
+          <div id="stat-value" class="text-xl sm:text-2xl font-bold text-amber-400 tabular-nums">
+            ₹0.00
+          </div>
+        </div>
+      </div>
+
+      <!-- PDF download -->
+      <button onclick="downloadPDF()"
+        class="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 active:scale-95
+               text-white font-bold px-5 py-2.5 rounded-xl transition
+               shadow-lg shadow-black/30 whitespace-nowrap text-sm sm:text-base">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        Download PDF Order
+      </button>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────
+//  CONSTANTS & STATE
+// ─────────────────────────────────────────────────────────────
+const GST_RATE   = 0.05;
+const FILE_NAME  = 'price_list.xlsx';
+
+let allItems     = [];   // { slNo, name, unit, basePrice (num|null), category }
+let quantities   = {};   // slNo → integer qty
+let categories   = [];   // ordered list of category names
+let visibleItems = [];   // filtered subset of allItems
+
+// ─────────────────────────────────────────────────────────────
+//  BOOT
+// ─────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('orderDate').value = todayISO();
+
+  // Auto-fetch the xlsx from the same deployment directory
+  fetch(FILE_NAME)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+    .then(buf  => parseXLSX(buf))
+    .catch(_err => showState('error'));
+});
+
+// Manual file-picker fallback
+function loadFromFile(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  showState('loading');
+  const reader = new FileReader();
+  reader.onload = e => parseXLSX(e.target.result);
+  reader.readAsArrayBuffer(file);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  STATE DISPLAY
+// ─────────────────────────────────────────────────────────────
+function showState(s) {
+  const states = {
+    loading : document.getElementById('stateLoading'),
+    error   : document.getElementById('stateError'),
+    table   : document.getElementById('stateTable'),
+  };
+  Object.entries(states).forEach(([key, el]) => {
+    const isActive = key === s;
+    el.classList.toggle('hidden',  !isActive);
+    // 'loading' and 'error' need flex; 'table' uses block
+    if (key !== 'table') {
+      el.classList.toggle('flex', isActive);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+//  XLSX PARSING  (handles two category-row layouts)
+//
+//  Layout A  (first category only):
+//    col[0]=null  col[1]='ASAVARISHTAMS'  col[2]=null  col[3]=null
+//
+//  Layout B  (all other categories):
+//    col[0]=''    col[1]=null   col[2]='THYLAM'  col[3]=null
+// ─────────────────────────────────────────────────────────────
+function parseXLSX(buffer) {
+  try {
+    const wb   = XLSX.read(buffer, { type: 'array' });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+    allItems   = [];
+    categories = [];
+
+    // Locate the header row (contains "SL", "Medicine", "Price", etc.)
+    let dataStart = 1;
+    for (let i = 0; i < Math.min(rows.length, 8); i++) {
+      const line = rows[i].map(c => String(c).toLowerCase()).join(' ');
+      if (line.includes('medicine') || line.includes('sl') || line.includes('price')) {
+        dataStart = i + 1;
+        break;
+      }
+    }
+
+    let currentCategory = 'General';
+
+    for (let i = dataStart; i < rows.length; i++) {
+      const r = rows[i];
+
+      // Raw cell values
+      const c0 = r[0];                        // SL No
+      const c1 = String(r[1] || '').trim();  // Medicine name  (or category in layout A)
+      const c2 = String(r[2] || '').trim();  // Unit           (or category in layout B)
+      const c3 = r[3];                        // Price
+
+      // Skip fully blank rows
+      if (!c1 && !c2 && c0 === '') continue;
+
+      const slNum   = parseFloat(c0);
+      const price   = parseFloat(c3);
+      const noSL    = (c0 === '' || c0 === null || c0 === undefined || isNaN(slNum));
+      const noPrice = isNaN(price);
+
+      // ── Category header ──────────────────────────────────
+      if (noSL && noPrice) {
+        const catName = c1 || c2;  // layout A → c1, layout B → c2
+        if (catName) {
+          currentCategory = catName;
+          if (!categories.includes(catName)) categories.push(catName);
+        }
+        continue;
+      }
+
+      // ── Regular item ─────────────────────────────────────
+      if (!noSL && c1) {
+        allItems.push({
+          slNo     : String(c0).trim(),
+          name     : c1,
+          unit     : c2,
+          basePrice: noPrice ? null : price,
+          category : currentCategory,
+        });
+      }
+    }
+
+    // Populate category dropdown
+    const sel = document.getElementById('catFilter');
+    categories.forEach(cat => {
+      const opt = document.createElement('option');
+      opt.value = opt.textContent = cat;
+      sel.appendChild(opt);
+    });
+
+    showState('table');
+    applyFilters();
+
+  } catch (err) {
+    console.error('[Pattiam] Parse error:', err);
+    showState('error');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  FILTERING
+// ─────────────────────────────────────────────────────────────
+function applyFilters() {
+  const q   = document.getElementById('searchInput').value.toLowerCase().trim();
+  const cat = document.getElementById('catFilter').value;
+  const oo  = document.getElementById('orderedOnly').checked;
+
+  visibleItems = allItems.filter(item => {
+    if (oo  && !(quantities[item.slNo] > 0)) return false;
+    if (cat && item.category !== cat)        return false;
+    if (q   && !item.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  renderTable();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  TABLE RENDERING
+// ─────────────────────────────────────────────────────────────
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  const frag  = document.createDocumentFragment();
+
+  let lastCat   = null;
+  let dispRow   = 0;
+
+  visibleItems.forEach(item => {
+    // ── Category separator ───────────────────────────────
+    if (item.category !== lastCat) {
+      const catTr = document.createElement('tr');
+      catTr.className = 'cat-row';
+      catTr.innerHTML =
+        `<td colspan="7" class="px-4 py-2 text-[11px] font-bold uppercase
+                                tracking-widest text-white/80 select-none">
+           ${escHtml(item.category)}
+         </td>`;
+      frag.appendChild(catTr);
+      lastCat = item.category;
+    }
+
+    // ── Item row ─────────────────────────────────────────
+    dispRow++;
+    const qty       = quantities[item.slNo] || 0;
+    const bp        = item.basePrice;
+    const hasPrice  = bp !== null;
+    const gstUnit   = hasPrice ? bp * GST_RATE : null;
+    const inclGST   = hasPrice ? bp + gstUnit  : null;
+    const lineTotal = hasPrice ? inclGST * qty : null;
+
+    const baseStr   = hasPrice ? '₹' + bp.toFixed(2)       : 'N/A';
+    const inclStr   = hasPrice ? '₹' + inclGST.toFixed(2)  : 'N/A';
+    const totalStr  = lineTotal > 0 ? '₹' + lineTotal.toFixed(2) : '—';
+    const totalCls  = lineTotal > 0
+      ? 'total-cell px-3 py-2.5 text-right font-bold tabular-nums text-g-700'
+      : 'total-cell px-3 py-2.5 text-right tabular-nums text-slate-300';
+
+    const tr = document.createElement('tr');
+    tr.className = 'item-row border-b border-slate-100';
+    tr.style.backgroundColor = dispRow % 2 === 0 ? '#f8fafc' : '#ffffff';
+    tr.dataset.slno = item.slNo;
+
+    tr.innerHTML = `
+      <td class="px-3 py-2.5 text-slate-400 text-xs w-10 tabular-nums">${escHtml(item.slNo)}</td>
+      <td class="px-3 py-2.5 font-medium text-slate-800 leading-snug">
+        ${escHtml(item.name)}
+      </td>
+      <td class="px-3 py-2.5 text-center text-slate-400 text-xs">${escHtml(item.unit)}</td>
+      <td class="px-3 py-2.5 text-right text-slate-500 tabular-nums
+                 ${!hasPrice ? 'italic text-xs' : ''}">${baseStr}</td>
+      <td class="px-3 py-2.5 text-right font-semibold text-g-700 tabular-nums
+                 ${!hasPrice ? 'italic text-xs !text-slate-400' : ''}">${inclStr}</td>
+      <td class="px-3 py-2.5">
+        <div class="flex items-center justify-center gap-1">
+          <button
+            onclick="changeQty('${item.slNo}', -1)"
+            ${!hasPrice ? 'disabled' : ''}
+            aria-label="Decrease quantity"
+            class="qty-btn w-7 h-7 flex items-center justify-center rounded-full
+                   bg-slate-100 hover:bg-red-100 hover:text-red-600
+                   text-slate-500 text-[18px] font-bold leading-none select-none
+                   disabled:opacity-30 disabled:cursor-not-allowed">
+            −
+          </button>
+          <input
+            type="number"
+            min="0" max="9999"
+            data-slno="${item.slNo}"
+            value="${qty}"
+            ${!hasPrice ? 'disabled' : ''}
+            oninput="onQtyInput(this)"
+            onblur="onQtyBlur(this)"
+            aria-label="Quantity for ${escHtml(item.name)}"
+            class="w-12 text-center text-sm border border-slate-200 rounded-lg
+                   py-1 font-semibold text-slate-700 focus:outline-none
+                   focus:ring-2 focus:ring-g-600 focus:border-g-600 transition
+                   disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-slate-100">
+          <button
+            onclick="changeQty('${item.slNo}', 1)"
+            ${!hasPrice ? 'disabled' : ''}
+            aria-label="Increase quantity"
+            class="qty-btn w-7 h-7 flex items-center justify-center rounded-full
+                   bg-slate-100 hover:bg-green-100 hover:text-g-700
+                   text-slate-500 text-[18px] font-bold leading-none select-none
+                   disabled:opacity-30 disabled:cursor-not-allowed">
+            +
+          </button>
+        </div>
+      </td>
+      <td class="${totalCls}">${totalStr}</td>
+    `;
+    frag.appendChild(tr);
+  });
+
+  tbody.innerHTML = '';
+  tbody.appendChild(frag);
+
+  // No-results message
+  const noRes = document.getElementById('noResults');
+  noRes.classList.toggle('hidden', visibleItems.length > 0);
+
+  // Item count badge
+  document.getElementById('countBadge').textContent =
+    visibleItems.length === allItems.length
+      ? `${allItems.length} medicines`
+      : `${visibleItems.length} / ${allItems.length}`;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  QUANTITY MANAGEMENT  (in-place DOM update — no full re-render)
+// ─────────────────────────────────────────────────────────────
+function changeQty(slNo, delta) {
+  const cur = quantities[slNo] || 0;
+  const nv  = Math.max(0, cur + delta);
+  quantities[slNo] = nv;
+
+  // Update input value and total cell in-place
+  patchRow(slNo);
+  updateCartBar();
+  syncResetBtn();
+
+  // If "ordered only" is on and qty just became 0, fade row out then re-filter
+  if (document.getElementById('orderedOnly').checked && nv === 0) {
+    const row = getRow(slNo);
+    if (row) {
+      row.style.transition = 'opacity 0.25s';
+      row.style.opacity = '0';
+      setTimeout(() => applyFilters(), 270);
+    }
+  }
+}
+
+function onQtyInput(input) {
+  const slNo = input.dataset.slno;
+  const n    = parseInt(input.value, 10);
+  quantities[slNo] = (isNaN(n) || n < 0) ? 0 : n;
+  patchTotalCell(slNo);
+  updateCartBar();
+  syncResetBtn();
+}
+
+function onQtyBlur(input) {
+  const slNo = input.dataset.slno;
+  const n    = parseInt(input.value, 10);
+  const safe = (isNaN(n) || n < 0) ? 0 : n;
+  quantities[slNo] = safe;
+  input.value = safe;
+  patchTotalCell(slNo);
+}
+
+// Patch a row's input value AND total cell
+function patchRow(slNo) {
+  const row = getRow(slNo);
+  if (!row) return;
+  const input = row.querySelector('input[type=number]');
+  if (input) input.value = quantities[slNo] || 0;
+  patchTotalCell(slNo, row);
+
+  // Brief flash animation
+  row.classList.remove('row-flash');
+  void row.offsetWidth; // reflow
+  row.classList.add('row-flash');
+}
+
+// Update only the total cell
+function patchTotalCell(slNo, row) {
+  row = row || getRow(slNo);
+  if (!row) return;
+
+  const item = allItems.find(i => i.slNo === slNo);
+  if (!item || item.basePrice === null) return;
+
+  const qty  = quantities[slNo] || 0;
+  const tot  = item.basePrice * (1 + GST_RATE) * qty;
+  const cell = row.querySelector('.total-cell');
+  if (!cell) return;
+
+  cell.textContent = tot > 0 ? '₹' + tot.toFixed(2) : '—';
+  cell.className   = tot > 0
+    ? 'total-cell px-3 py-2.5 text-right font-bold tabular-nums text-g-700'
+    : 'total-cell px-3 py-2.5 text-right tabular-nums text-slate-300';
+}
+
+function getRow(slNo) {
+  return document.querySelector(`tr[data-slno="${CSS.escape(slNo)}"]`);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CART BAR
+// ─────────────────────────────────────────────────────────────
+function updateCartBar() {
+  let totalItems = 0, totalQty = 0, totalValue = 0;
+
+  allItems.forEach(item => {
+    const q = quantities[item.slNo] || 0;
+    if (q > 0 && item.basePrice !== null) {
+      totalItems++;
+      totalQty   += q;
+      totalValue += item.basePrice * (1 + GST_RATE) * q;
+    }
+  });
+
+  document.getElementById('stat-items').textContent = totalItems;
+  document.getElementById('stat-qty').textContent   = totalQty;
+  document.getElementById('stat-value').textContent = '₹' + totalValue.toFixed(2);
+
+  document.getElementById('cartBar').classList.toggle('show', totalItems > 0);
+}
+
+function syncResetBtn() {
+  const hasAny = allItems.some(i => (quantities[i.slNo] || 0) > 0);
+  const btn = document.getElementById('resetBtn');
+  btn.classList.toggle('hidden', !hasAny);
+  btn.classList.toggle('flex',   hasAny);
+}
+
+function resetAll() {
+  if (!confirm('Clear all quantities and start over?')) return;
+  quantities = {};
+  applyFilters();   // full re-render reflects zeroed qtys
+  updateCartBar();
+  syncResetBtn();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  PDF GENERATION
+// ─────────────────────────────────────────────────────────────
+function downloadPDF() {
+  const ordered = allItems.filter(i =>
+    (quantities[i.slNo] || 0) > 0 && i.basePrice !== null
+  );
+
+  if (ordered.length === 0) {
+    alert('Please add quantities to at least one item before downloading the PDF.');
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+  const PW  = 210;  // page width mm
+
+  const custName    = document.getElementById('custName').value.trim()    || '—';
+  const custAddress = document.getElementById('custAddress').value.trim() || '—';
+  const custPhone   = document.getElementById('custPhone').value.trim()   || '—';
+  const orderDate   = document.getElementById('orderDate').value          || todayISO();
+  const orderNo     = 'PAT-' + Date.now().toString().slice(-7);
+
+  // ── Header band ──────────────────────────────────────────
+  doc.setFillColor(5, 46, 22);      // g-950
+  doc.rect(0, 0, PW, 40, 'F');
+
+  doc.setFillColor(20, 83, 45);     // g-900 accent stripe
+  doc.rect(0, 32, PW, 8, 'F');
+
+  // Company name
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Pattiam Ayurvedics', 14, 15);
+
+  // Subtitle
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(187, 247, 208);   // g-200
+  doc.text('Ayurvedic Medicine Order Form', 14, 23);
+
+  // Order meta (right side)
+  doc.setTextColor(220, 252, 231);   // g-100
+  doc.setFontSize(8.5);
+  doc.text('Order No: ' + orderNo, PW - 14, 15, { align: 'right' });
+  doc.text('Date: ' + orderDate,   PW - 14, 23, { align: 'right' });
+
+  // "TAX INVOICE" centred on the stripe
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('TAX INVOICE', PW / 2, 37.5, { align: 'center' });
+
+  // ── Customer info box ────────────────────────────────────
+  const BX = 44;
+  doc.setFillColor(240, 253, 244);   // g-50
+  doc.setDrawColor(22, 101, 52);     // g-800
+  doc.setLineWidth(0.3);
+  doc.roundedRect(14, BX, PW - 28, 26, 2, 2, 'FD');
+
+  doc.setTextColor(22, 101, 52);
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  doc.text('BILLED TO', 18, BX + 6);
+
+  doc.setFontSize(10);
+  doc.setTextColor(20, 20, 20);
+  doc.setFont('helvetica', 'bold');
+  doc.text(custName, 18, BX + 13);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(70, 70, 70);
+  doc.text('Address: ' + custAddress, 18, BX + 20);
+  doc.text('Phone: ' + custPhone,    18, BX + 26.5);
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text('GST Rate: 5%   |   Prices = Base + GST', PW - 18, BX + 26.5, { align: 'right' });
+
+  // ── Build table rows ─────────────────────────────────────
+  let grandBase  = 0;
+  let grandGST   = 0;
+  let grandTotal = 0;
+  let grandQty   = 0;
+  let slCounter  = 1;
+
+  const tableRows = ordered.map(item => {
+    const qty     = quantities[item.slNo] || 0;
+    const base    = item.basePrice;
+    const gstUnit = +(base * GST_RATE).toFixed(2);
+    const lineAmt = +((base + gstUnit) * qty).toFixed(2);
+
+    grandBase  += +(base    * qty).toFixed(2);
+    grandGST   += +(gstUnit * qty).toFixed(2);
+    grandTotal += lineAmt;
+    grandQty   += qty;
+
+    return [
+      slCounter++,
+      item.name + '\n(' + item.unit + ')',
+      qty,
+      '₹' + base.toFixed(2),
+      '₹' + gstUnit.toFixed(2),
+      '₹' + lineAmt.toFixed(2),
+    ];
+  });
+
+  // ── AutoTable ────────────────────────────────────────────
+  doc.autoTable({
+    startY      : BX + 30,
+    head        : [['Sl No', 'Medicine Name', 'Quantity', 'Base Rate', 'GST (5%)', 'Total']],
+    body        : tableRows,
+    foot        : [[
+      { content: 'GRAND TOTAL', colSpan: 2,
+        styles : { halign: 'right', fontStyle: 'bold', fontSize: 9.5 } },
+      { content: grandQty,
+        styles : { halign: 'center', fontStyle: 'bold', fontSize: 9.5 } },
+      { content: '₹' + grandBase.toFixed(2),
+        styles : { halign: 'right', fontStyle: 'bold', fontSize: 9.5 } },
+      { content: '₹' + grandGST.toFixed(2),
+        styles : { halign: 'right', fontStyle: 'bold', fontSize: 9.5 } },
+      { content: '₹' + grandTotal.toFixed(2),
+        styles : { halign: 'right', fontStyle: 'bold', fontSize: 10.5,
+                   textColor: [5, 46, 22] } },
+    ]],
+    headStyles : {
+      fillColor  : [5, 46, 22],
+      textColor  : 255,
+      fontStyle  : 'bold',
+      halign     : 'center',
+      fontSize   : 8.5,
+      cellPadding: 3,
+    },
+    footStyles : {
+      fillColor: [220, 252, 231],
+      textColor: [5, 46, 22],
+    },
+    columnStyles: {
+      0: { cellWidth: 14, halign: 'center' },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 20, halign: 'center' },
+      3: { cellWidth: 27, halign: 'right' },
+      4: { cellWidth: 23, halign: 'right' },
+      5: { cellWidth: 27, halign: 'right' },
+    },
+    bodyStyles        : { fontSize: 8.5, cellPadding: 2.5 },
+    alternateRowStyles: { fillColor: [245, 255, 247] },
+    theme             : 'striped',
+    margin            : { left: 14, right: 14 },
+    didParseCell(data) {
+      // Highlight Total column in body rows
+      if (data.section === 'body' && data.column.index === 5) {
+        data.cell.styles.textColor = [5, 46, 22];
+        data.cell.styles.fontStyle = 'bold';
+      }
+    },
+  });
+
+  // ── Summary box (bottom-right) ───────────────────────────
+  const finalY = doc.lastAutoTable.finalY + 7;
+  const SBW = 68, SBH = 26, SBX = PW - 14 - SBW;
+
+  doc.setFillColor(5, 46, 22);
+  doc.roundedRect(SBX, finalY, SBW, SBH, 2, 2, 'F');
+
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(187, 247, 208);
+  doc.text('ORDER SUMMARY', SBX + SBW / 2, finalY + 5.5, { align: 'center' });
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(220, 252, 231);
+  doc.text('Base Total:',  SBX + 4, finalY + 12);
+  doc.text('₹' + grandBase.toFixed(2),  SBX + SBW - 4, finalY + 12, { align: 'right' });
+  doc.text('GST (5%):',    SBX + 4, finalY + 18);
+  doc.text('₹' + grandGST.toFixed(2),   SBX + SBW - 4, finalY + 18, { align: 'right' });
+
+  doc.setFontSize(9.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(253, 230, 138);   // amber-200
+  doc.text('Grand Total:',              SBX + 4, finalY + 24.5);
+  doc.text('₹' + grandTotal.toFixed(2), SBX + SBW - 4, finalY + 24.5, { align: 'right' });
+
+  // ── Page footer ──────────────────────────────────────────
+  const PH = doc.internal.pageSize.getHeight();
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.2);
+  doc.line(14, PH - 13, PW - 14, PH - 13);
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(150, 150, 150);
+  doc.text('Thank you for your order. All prices include 5% GST.', 14, PH - 7.5);
+  doc.text('Pattiam Ayurvedics', PW - 14, PH - 7.5, { align: 'right' });
+
+  // ── Save ─────────────────────────────────────────────────
+  doc.save('Pattiam_Order_' + orderDate.replace(/-/g, '') + '.pdf');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  UTILITIES
+// ─────────────────────────────────────────────────────────────
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
+
+</body>
+</html>
